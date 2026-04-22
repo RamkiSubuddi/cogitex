@@ -1,11 +1,52 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import PersonaSelector from '@/components/PersonaSelector'
 import CustomerForm from '@/components/CustomerForm'
 import RightPanel from '@/components/RightPanel'
 import { Persona, FormState, WebhookResponse } from '@/lib/types'
 import { DEFAULT_FORM_STATE } from '@/lib/personas'
+
+function useScrollFade() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [hasMore, setHasMore] = useState(false)
+
+  const check = useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    const scrollable = el.scrollHeight > el.clientHeight + 4
+    const atBottom   = el.scrollHeight - el.scrollTop <= el.clientHeight + 8
+    setHasMore(scrollable && !atBottom)
+  }, [])
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    check()
+    el.addEventListener('scroll', check, { passive: true })
+    const ro = new ResizeObserver(check)
+    ro.observe(el)
+    return () => { el.removeEventListener('scroll', check); ro.disconnect() }
+  }, [check])
+
+  return { ref, hasMore }
+}
+
+function ScrollFadeOverlay({ from }: { from: string }) {
+  return (
+    <div
+      className={`pointer-events-none absolute bottom-0 left-0 right-0 h-20 flex items-end justify-center pb-2 ${from}`}
+      style={{ background: `linear-gradient(to top, ${from === 'left' ? '#0A0A0F' : '#111118'} 0%, transparent 100%)` }}
+    >
+      <svg
+        className="w-4 h-4 text-cogitx-purple opacity-80 animate-bounce"
+        fill="none" viewBox="0 0 24 24" stroke="currentColor"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    </div>
+  )
+}
 
 const LS_KEY = 'cogitx_webhook_url'
 
@@ -112,11 +153,14 @@ export default function Home() {
     }
   }
 
+  const left  = useScrollFade()
+  const right = useScrollFade()
+
   return (
     <div className="flex h-full bg-cogitx-dark overflow-hidden">
       {/* LEFT PANEL */}
-      <div className="w-[45%] h-full flex flex-col border-r border-cogitx-border overflow-y-auto">
-        {/* Header */}
+      <div className="w-[45%] h-full flex flex-col border-r border-cogitx-border">
+        {/* Header — fixed, never scrolls */}
         <div className="flex items-center gap-3 px-5 py-4 border-b border-cogitx-border flex-shrink-0">
           <div className="w-8 h-8 rounded-lg bg-cogitx-purple/20 border border-cogitx-purple/30 flex items-center justify-center">
             <svg className="w-4 h-4 text-cogitx-purple" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -129,18 +173,21 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Persona Selector */}
-        <PersonaSelector
-          selectedId={selectedPersonaId}
-          onSelect={handlePersonaSelect}
-          onRandomise={handleRandomise}
-        />
+        {/* Scrollable form area with fade indicator */}
+        <div className="flex-1 relative overflow-hidden">
+          <div ref={left.ref} className="h-full overflow-y-auto">
+            <PersonaSelector
+              selectedId={selectedPersonaId}
+              onSelect={handlePersonaSelect}
+              onRandomise={handleRandomise}
+            />
+            <CustomerForm form={form} onChange={setForm} />
+          </div>
+          {left.hasMore && <ScrollFadeOverlay from="left" />}
+        </div>
 
-        {/* Form */}
-        <CustomerForm form={form} onChange={setForm} />
-
-        {/* Action Buttons */}
-        <div className="p-4 flex flex-col gap-2.5 flex-shrink-0 border-t border-cogitx-border bg-cogitx-panel sticky bottom-0">
+        {/* Action Buttons — fixed at bottom, never scrolls */}
+        <div className="p-4 flex flex-col gap-2.5 flex-shrink-0 border-t border-cogitx-border bg-cogitx-dark">
 
           {/* Webhook URL row */}
           <div className="flex items-center gap-2">
@@ -200,15 +247,18 @@ export default function Home() {
       </div>
 
       {/* RIGHT PANEL */}
-      <div className="w-[55%] h-full overflow-y-auto bg-cogitx-panel">
-        <RightPanel
-          loading={loading}
-          response={response}
-          error={error}
-          customerName={form.customer_profile.name}
-          customerCity={form.customer_profile.city}
-          rawResponse={rawResponse}
-        />
+      <div className="w-[55%] h-full relative overflow-hidden bg-cogitx-panel">
+        <div ref={right.ref} className="h-full overflow-y-auto">
+          <RightPanel
+            loading={loading}
+            response={response}
+            error={error}
+            customerName={form.customer_profile.name}
+            customerCity={form.customer_profile.city}
+            rawResponse={rawResponse}
+          />
+        </div>
+        {right.hasMore && <ScrollFadeOverlay from="right" />}
       </div>
     </div>
   )
